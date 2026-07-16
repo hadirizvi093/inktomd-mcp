@@ -24,12 +24,6 @@ inktomd reduces token usage by up to 63% by converting raw documents to clean Ma
 
 **Note:** PyPI package coming soon — star the repo to be notified.
 
-### Configuration
-
-- Copy `.env.example` to `.env`
-- Set `INKTOMD_API_URL` to your inktomd API URL
-- The default value points to the public inktomd.com API
-
 ### Run from source
 
 ```bash
