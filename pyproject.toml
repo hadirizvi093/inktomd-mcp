@@ -1,0 +1,22 @@
+[project]
+name = "inktomd-mcp"
+version = "0.1.0"
+description = "MCP server for inktomd — convert any file or URL to AI-ready Markdown"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+    "httpx>=0.27.0",
+]
+
+[project.urls]
+Homepage = "https://www.inktomd.com"
+Repository = "https://github.com/hadirizvi093/inktomd"
+
+[project.scripts]
+inktomd-mcp = "server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
