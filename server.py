@@ -1,8 +1,12 @@
+import os
 import pathlib
 import httpx
 from mcp.server.fastmcp import FastMCP
+from dotenv import load_dotenv
 
-API_BASE = "https://markitdown-api-379615348940.asia-south1.run.app"
+load_dotenv()
+
+API_BASE = os.environ.get("INKTOMD_API_URL", "https://inktomd.com/api")
 MAX_FILE_SIZE_MB = 20
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 SERVER_NAME = "inktomd"
