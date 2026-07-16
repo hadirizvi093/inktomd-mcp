@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="inktomd" width="120" />
+</p>
+
 # inktomd MCP Server
 
 Convert any file or URL to clean AI-ready Markdown directly from Claude, Claude Code, Cursor, or any MCP-compatible AI agent.
