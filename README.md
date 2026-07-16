@@ -22,6 +22,17 @@ inktomd reduces token usage by up to 63% by converting raw documents to clean Ma
 
 ## Installation & Configuration
 
+**Note:** PyPI package coming soon — star the repo to be notified.
+
+### Run from source
+
+```bash
+git clone https://github.com/hadirizvi093/inktomd
+cd inktomd/mcp
+pip install -r requirements.txt
+python server.py
+```
+
 ### Claude Desktop
 
 Add to your Claude Desktop config file:
@@ -33,8 +44,8 @@ Add to your Claude Desktop config file:
 {
   "mcpServers": {
     "inktomd": {
-      "command": "uvx",
-      "args": ["inktomd-mcp"]
+      "command": "python",
+      "args": ["C:/path/to/inktomd-mcp/server.py"]
     }
   }
 }
@@ -43,7 +54,7 @@ Add to your Claude Desktop config file:
 ### Claude Code
 
 ```bash
-claude mcp add inktomd uvx inktomd-mcp
+claude mcp add inktomd python C:/path/to/inktomd-mcp/server.py
 ```
 
 Or add to `.claude/settings.json` in your project:
@@ -52,8 +63,8 @@ Or add to `.claude/settings.json` in your project:
 {
   "mcpServers": {
     "inktomd": {
-      "command": "uvx",
-      "args": ["inktomd-mcp"]
+      "command": "python",
+      "args": ["C:/path/to/inktomd-mcp/server.py"]
     }
   }
 }
@@ -66,19 +77,10 @@ Go to Cursor Settings → Features → MCP → Add new MCP server:
 ```json
 {
   "inktomd": {
-    "command": "uvx",
-    "args": ["inktomd-mcp"]
+    "command": "python",
+    "args": ["C:/path/to/inktomd-mcp/server.py"]
   }
 }
-```
-
-### Run from source
-
-```bash
-git clone https://github.com/hadirizvi093/inktomd
-cd inktomd/mcp
-pip install -r requirements.txt
-python server.py
 ```
 
 ## Usage Examples
