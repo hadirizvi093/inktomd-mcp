@@ -50,7 +50,11 @@ SUPPORTED_URLS_DESCRIPTION = {
     "GitHub": "README files, repository pages, GitHub Gists",
 }
 
-mcp = FastMCP(name=SERVER_NAME)
+mcp = FastMCP(
+    name=SERVER_NAME,
+    host="0.0.0.0",
+    port=int(os.environ.get("PORT", 8080))
+)
 
 @mcp.tool()
 async def convert_url(url: str) -> str:
@@ -171,6 +175,4 @@ async def list_supported_formats() -> str:
     return "\n".join(lines)
 
 if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 8080))
-    mcp.run(transport="streamable-http", port=port)
+    mcp.run(transport="streamable-http")
