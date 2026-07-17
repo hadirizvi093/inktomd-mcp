@@ -208,31 +208,41 @@ async def list_supported_formats() -> str:
     
     return "\n".join(lines)
 
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.routing import Mount, Route
+
 if __name__ == "__main__":
     import os
     import uvicorn
-    from starlette.middleware.trustedhost import TrustedHostMiddleware
     
     port = int(os.environ.get("PORT", 8080))
     
-    # Get the FastMCP app and disable host checking
-    app = mcp.streamable_http_app()
+    # Get FastMCP's ASGI app
+    mcp_app = mcp.streamable_http_app()
     
     async def health_check(request: Request):
         return JSONResponse({"status": "ok"})
-        
-    app.add_route("/", health_check)
     
-    # Remove any existing TrustedHostMiddleware and add permissive one
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
-    app.add_middleware(RateLimitMiddleware, max_requests=30, window=3600)
+    # Wrap it in a Starlette app with no host restrictions
+    starlette_app = Starlette(
+        routes=[
+            Route("/health", health_check),
+            Mount("/", app=mcp_app)
+        ],
+        middleware=[
+            Middleware(TrustedHostMiddleware, allowed_hosts=["*"]),
+        ]
+    )
+    
+    # Add our rate limiter
+    starlette_app.add_middleware(RateLimitMiddleware, max_requests=30, window=3600)
     
     uvicorn.run(
-        app,
+        starlette_app,
         host="0.0.0.0",
         port=port,
         forwarded_allow_ips="*",
-        proxy_headers=True,
-        server_header=False,
-        headers=[("server", "inktomd")]
+        proxy_headers=True
     )
