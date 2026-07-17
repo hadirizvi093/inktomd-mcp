@@ -213,6 +213,11 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
     app = mcp.streamable_http_app()
+    
+    async def health_check(request: Request):
+        return JSONResponse({"status": "ok"})
+        
+    app.add_route("/", health_check)
     app.add_middleware(RateLimitMiddleware, max_requests=30, window=3600)
     uvicorn.run(
         app,
