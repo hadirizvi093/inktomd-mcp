@@ -3,6 +3,43 @@ import uvicorn
 import pathlib
 import httpx
 from mcp.server.fastmcp import FastMCP
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+import time
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, max_requests: int = 30, window: int = 3600):
+        super().__init__(app)
+        self.max_requests = max_requests
+        self.window = window
+        self.requests: dict = {}
+
+    async def dispatch(self, request: Request, call_next):
+        client_ip = request.headers.get("x-forwarded-for", 
+                    request.client.host if request.client else "unknown")
+        client_ip = client_ip.split(",")[0].strip()
+        now = time.time()
+        
+        if client_ip not in self.requests:
+            self.requests[client_ip] = []
+        
+        self.requests[client_ip] = [
+            t for t in self.requests[client_ip] 
+            if now - t < self.window
+        ]
+        
+        if len(self.requests[client_ip]) >= self.max_requests:
+            return JSONResponse(
+                {"error": "Rate limit exceeded. Maximum 30 requests per hour per IP."},
+                status_code=429
+            )
+        
+        self.requests[client_ip].append(now)
+        return await call_next(request)
 
 API_BASE = "https://www.inktomd.com/api"
 MAX_FILE_SIZE_MB = 20
@@ -171,8 +208,16 @@ async def list_supported_formats() -> str:
     
     return "\n".join(lines)
 
-port = int(os.environ.get("PORT", 8080))
-
 if __name__ == "__main__":
+    import os
+    import uvicorn
+    port = int(os.environ.get("PORT", 8080))
     app = mcp.streamable_http_app()
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    app.add_middleware(RateLimitMiddleware, max_requests=30, window=3600)
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=port,
+        forwarded_allow_ips="*",
+        proxy_headers=True
+    )
