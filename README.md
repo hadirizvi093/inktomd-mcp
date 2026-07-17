@@ -4,6 +4,8 @@
 
 # inktomd MCP Server
 
+[![smithery badge](https://smithery.ai/badge/hadirizvi093/inktomd)](https://smithery.ai/servers/hadirizvi093/inktomd)
+
 Convert any file or URL to clean AI-ready Markdown directly from Claude, Claude Code, Cursor, or any MCP-compatible AI agent.
 
 inktomd reduces token usage by up to 63% by converting raw documents to clean Markdown — the format AI models were trained on.
