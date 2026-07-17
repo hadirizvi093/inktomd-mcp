@@ -211,18 +211,28 @@ async def list_supported_formats() -> str:
 if __name__ == "__main__":
     import os
     import uvicorn
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
+    
     port = int(os.environ.get("PORT", 8080))
+    
+    # Get the FastMCP app and disable host checking
     app = mcp.streamable_http_app()
     
     async def health_check(request: Request):
         return JSONResponse({"status": "ok"})
         
     app.add_route("/", health_check)
+    
+    # Remove any existing TrustedHostMiddleware and add permissive one
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
     app.add_middleware(RateLimitMiddleware, max_requests=30, window=3600)
+    
     uvicorn.run(
         app,
         host="0.0.0.0",
         port=port,
         forwarded_allow_ips="*",
-        proxy_headers=True
+        proxy_headers=True,
+        server_header=False,
+        headers=[("server", "inktomd")]
     )
