@@ -1,4 +1,5 @@
 import os
+import uvicorn
 import pathlib
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -170,9 +171,8 @@ async def list_supported_formats() -> str:
     
     return "\n".join(lines)
 
-def main():
-    port = int(os.environ.get("PORT", 8080))
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+port = int(os.environ.get("PORT", 8080))
 
 if __name__ == "__main__":
-    main()
+    app = mcp.streamable_http_app()
+    uvicorn.run(app, host="0.0.0.0", port=port)
