@@ -174,5 +174,231 @@ async def list_supported_formats() -> str:
     
     return "\n".join(lines)
 
+@mcp.tool()
+async def count_tokens(text: str, model: str = "gpt-4o") -> str:
+    """
+    Count the exact number of tokens in a text string for a specific AI model.
+    Uses tiktoken for OpenAI models and estimates for others.
+    
+    Args:
+        text: The text to count tokens for
+        model: The AI model to count tokens for. Options: gpt-4o, gpt-4o-mini, 
+               gpt-4.1, claude-sonnet, claude-haiku, gemini-pro, gemini-flash,
+               llama-4, deepseek-v3, mistral-large. Default: gpt-4o
+    
+    Returns:
+        Token count information including count, context window, and fit status
+    """
+    import tiktoken
+    
+    MODEL_INFO = {
+        "gpt-4o": {"context": 128000, "price": 2.50, "tokenizer": "cl100k_base", "ratio": 1.0},
+        "gpt-4o-mini": {"context": 128000, "price": 0.15, "tokenizer": "cl100k_base", "ratio": 1.0},
+        "gpt-4.1": {"context": 1000000, "price": 2.00, "tokenizer": "cl100k_base", "ratio": 1.0},
+        "gpt-4.1-mini": {"context": 1000000, "price": 0.40, "tokenizer": "cl100k_base", "ratio": 1.0},
+        "o3": {"context": 200000, "price": 10.00, "tokenizer": "cl100k_base", "ratio": 1.0},
+        "claude-sonnet": {"context": 200000, "price": 3.00, "tokenizer": "cl100k_base", "ratio": 1.1},
+        "claude-haiku": {"context": 200000, "price": 1.00, "tokenizer": "cl100k_base", "ratio": 1.1},
+        "claude-opus": {"context": 200000, "price": 5.00, "tokenizer": "cl100k_base", "ratio": 1.1},
+        "gemini-pro": {"context": 2000000, "price": 1.25, "tokenizer": "cl100k_base", "ratio": 0.85},
+        "gemini-flash": {"context": 1000000, "price": 0.30, "tokenizer": "cl100k_base", "ratio": 0.85},
+        "llama-4": {"context": 128000, "price": 0.15, "tokenizer": "cl100k_base", "ratio": 1.05},
+        "deepseek-v3": {"context": 128000, "price": 0.27, "tokenizer": "cl100k_base", "ratio": 1.0},
+        "mistral-large": {"context": 128000, "price": 0.50, "tokenizer": "cl100k_base", "ratio": 1.0},
+    }
+    
+    model_key = model.lower().replace(" ", "-")
+    if model_key not in MODEL_INFO:
+        model_key = "gpt-4o"
+    
+    info = MODEL_INFO[model_key]
+    
+    try:
+        enc = tiktoken.get_encoding(info["tokenizer"])
+        base_tokens = len(enc.encode(text))
+    except Exception:
+        base_tokens = len(text.split()) * 4 // 3
+    
+    token_count = int(base_tokens * info["ratio"])
+    context_window = info["context"]
+    fits = token_count <= context_window
+    cost = (token_count / 1_000_000) * info["price"]
+    remaining = context_window - token_count
+    
+    result = f"""# Token Count for {model}
+
+**Token count:** {token_count:,} tokens
+**Context window:** {context_window:,} tokens
+**Fits in context:** {'✅ Yes' if fits else '❌ No — exceeds context window by ' + str(abs(remaining):,) + ' tokens'}
+**Tokens remaining:** {max(0, remaining):,} tokens
+**Processing cost:** ${cost:.4f}
+**Price per million tokens:** ${info['price']}
+
+## All Models Comparison
+
+| Model | Tokens | Context | Fits | Cost |
+|-------|--------|---------|------|------|
+"""
+    
+    for m, i in MODEL_INFO.items():
+        t = int(base_tokens * i["ratio"])
+        f = "✅" if t <= i["context"] else "❌"
+        c = (t / 1_000_000) * i["price"]
+        result += f"| {m} | {t:,} | {i['context']:,} | {f} | ${c:.4f} |\n"
+    
+    return result
+
+@mcp.tool()
+async def convert_batch(urls: list[str]) -> str:
+    """
+    Convert multiple URLs to Markdown in a single call. 
+    Maximum 10 URLs per batch. Each URL is converted independently.
+    
+    Args:
+        urls: List of URLs to convert. Maximum 10. Each must start with http:// or https://
+    
+    Returns:
+        All converted Markdown documents combined, clearly separated with headers
+    """
+    if not urls:
+        return "Error: No URLs provided. Please provide a list of URLs to convert."
+    
+    if len(urls) > 10:
+        return f"Error: Maximum 10 URLs per batch. You provided {len(urls)}. Please split into multiple batches."
+    
+    results = []
+    errors = []
+    
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for i, url in enumerate(urls, 1):
+            url = url.strip()
+            if not url.startswith(("http://", "https://")):
+                errors.append(f"URL {i}: Invalid URL — must start with http:// or https://")
+                continue
+            
+            try:
+                response = await client.post(
+                    f"{API_BASE}/convert-url",
+                    json={"url": url}
+                )
+                response.raise_for_status()
+                data = response.json()
+                markdown = data.get("markdown", "")
+                results.append(f"---\n\n## Document {i}: {url}\n\n{markdown}")
+            except httpx.TimeoutException:
+                errors.append(f"URL {i} ({url}): Timed out after 60 seconds")
+            except httpx.HTTPStatusError as e:
+                errors.append(f"URL {i} ({url}): HTTP {e.response.status_code}")
+            except Exception as e:
+                errors.append(f"URL {i} ({url}): {str(e)}")
+    
+    output = f"# Batch Conversion Results\n\n"
+    output += f"**Converted:** {len(results)}/{len(urls)} URLs successfully\n\n"
+    
+    if errors:
+        output += f"**Errors:**\n"
+        for err in errors:
+            output += f"- {err}\n"
+        output += "\n"
+    
+    output += "\n".join(results)
+    return output
+
+@mcp.tool()
+async def convert_with_metadata(source: str, source_type: str = "url") -> str:
+    """
+    Convert a file or URL to Markdown and return both content and structured metadata.
+    Metadata includes title, estimated token counts for all major models, word count,
+    character count, and reading time.
+    
+    Args:
+        source: Either a URL (starting with http/https) or absolute file path
+        source_type: Either "url" or "file". Default: "url"
+    
+    Returns:
+        Markdown content with a metadata header block containing all stats
+    """
+    import tiktoken
+    from pathlib import Path
+    
+    markdown = ""
+    
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        if source_type == "file":
+            path = Path(source)
+            if not path.exists():
+                return f"Error: File not found: {source}"
+            
+            ext = path.suffix.lower()
+            if ext not in SUPPORTED_EXTENSIONS:
+                return f"Error: Unsupported format: {ext}"
+            
+            file_size = path.stat().st_size
+            if file_size > MAX_FILE_SIZE_BYTES:
+                return f"Error: File too large ({file_size / 1024 / 1024:.1f}MB). Maximum: {MAX_FILE_SIZE_MB}MB"
+            
+            content = path.read_bytes()
+            files = {"file": (path.name, content)}
+            
+            try:
+                response = await client.post(f"{API_BASE}/convert", files=files)
+                response.raise_for_status()
+                markdown = response.json().get("markdown", "")
+            except Exception as e:
+                return f"Error converting file: {str(e)}"
+        else:
+            if not source.startswith(("http://", "https://")):
+                return "Error: Invalid URL. Must start with http:// or https://"
+            
+            try:
+                response = await client.post(f"{API_BASE}/convert-url", json={"url": source})
+                response.raise_for_status()
+                markdown = response.json().get("markdown", "")
+            except Exception as e:
+                return f"Error converting URL: {str(e)}"
+    
+    # Calculate metadata
+    try:
+        enc = tiktoken.get_encoding("cl100k_base")
+        base_tokens = len(enc.encode(markdown))
+    except Exception:
+        base_tokens = len(markdown.split()) * 4 // 3
+    
+    word_count = len(markdown.split())
+    char_count = len(markdown)
+    reading_time = max(1, word_count // 200)
+    
+    models = {
+        "gpt-4o": (base_tokens, 2.50),
+        "claude-sonnet": (int(base_tokens * 1.1), 3.00),
+        "gemini-pro": (int(base_tokens * 0.85), 1.25),
+        "gpt-4.1": (base_tokens, 2.00),
+        "deepseek-v3": (base_tokens, 0.27),
+    }
+    
+    metadata = f"""---
+# Document Metadata
+
+| Property | Value |
+|----------|-------|
+| Source | {source} |
+| Word count | {word_count:,} words |
+| Character count | {char_count:,} characters |
+| Reading time | ~{reading_time} minute{'s' if reading_time != 1 else ''} |
+
+## Token Counts by Model
+
+| Model | Tokens | Cost to Process |
+|-------|--------|-----------------|
+"""
+    
+    for model_name, (tokens, price) in models.items():
+        cost = (tokens / 1_000_000) * price
+        metadata += f"| {model_name} | {tokens:,} | ${cost:.4f} |\n"
+    
+    metadata += "\n---\n\n"
+    
+    return metadata + markdown
+
 if __name__ == "__main__":
     mcp.run(transport="streamable-http")
