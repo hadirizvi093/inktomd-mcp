@@ -229,7 +229,7 @@ async def count_tokens(text: str, model: str = "gpt-4o") -> str:
 
 **Token count:** {token_count:,} tokens
 **Context window:** {context_window:,} tokens
-**Fits in context:** {'✅ Yes' if fits else '❌ No — exceeds context window by ' + str(abs(remaining):,) + ' tokens'}
+**Fits in context:** {'✅ Yes' if fits else f'❌ No — exceeds context window by {abs(remaining):,} tokens'}
 **Tokens remaining:** {max(0, remaining):,} tokens
 **Processing cost:** ${cost:.4f}
 **Price per million tokens:** ${info['price']}
