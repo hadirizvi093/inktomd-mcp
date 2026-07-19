@@ -400,5 +400,128 @@ async def convert_with_metadata(source: str, source_type: str = "url") -> str:
     
     return metadata + markdown
 
+@mcp.tool()
+async def prepare_for_rag(
+    source: str,
+    source_type: str = "url",
+    chunk_size: int = 512,
+    overlap: int = 50
+) -> str:
+    """
+    Convert a file or URL to Markdown, then split it into optimally-sized chunks
+    ready for insertion into a vector database or RAG pipeline. Returns a JSON
+    array of chunks with token counts, making this the single tool needed to go
+    from raw document to RAG-ready data.
+    
+    Args:
+        source: Either a URL (starting with http/https) or absolute file path
+        source_type: Either "url" or "file". Default: "url"
+        chunk_size: Target token count per chunk. Default: 512. Recommended range: 256-1024
+        overlap: Token overlap between consecutive chunks to preserve context. Default: 50
+    
+    Returns:
+        JSON array of chunks, each with: chunk_id, text, token_count, char_count
+    """
+    import tiktoken
+    import json
+    from pathlib import Path
+    
+    markdown = ""
+    
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        if source_type == "file":
+            path = Path(source)
+            if not path.exists():
+                return json.dumps({"error": f"File not found: {source}"})
+            
+            ext = path.suffix.lower()
+            if ext not in SUPPORTED_EXTENSIONS:
+                return json.dumps({"error": f"Unsupported format: {ext}"})
+            
+            file_size = path.stat().st_size
+            if file_size > MAX_FILE_SIZE_BYTES:
+                return json.dumps({"error": f"File too large ({file_size / 1024 / 1024:.1f}MB)"})
+            
+            content = path.read_bytes()
+            files = {"file": (path.name, content)}
+            
+            try:
+                response = await client.post(f"{API_BASE}/convert", files=files)
+                response.raise_for_status()
+                markdown = response.json().get("markdown", "")
+            except Exception as e:
+                return json.dumps({"error": f"Conversion failed: {str(e)}"})
+        else:
+            if not source.startswith(("http://", "https://")):
+                return json.dumps({"error": "Invalid URL"})
+            
+            try:
+                response = await client.post(f"{API_BASE}/convert-url", json={"url": source})
+                response.raise_for_status()
+                markdown = response.json().get("markdown", "")
+            except Exception as e:
+                return json.dumps({"error": f"Conversion failed: {str(e)}"})
+    
+    if not markdown:
+        return json.dumps({"error": "Conversion produced no content"})
+    
+    # Chunk by tokens with overlap, respecting paragraph boundaries where possible
+    try:
+        enc = tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        enc = None
+    
+    def count_tokens(text: str) -> int:
+        if enc:
+            return len(enc.encode(text))
+        return len(text.split()) * 4 // 3
+    
+    # Split into paragraphs first
+    paragraphs = [p for p in markdown.split("\n\n") if p.strip()]
+    
+    chunks = []
+    current_chunk = ""
+    current_tokens = 0
+    chunk_id = 1
+    
+    for para in paragraphs:
+        para_tokens = count_tokens(para)
+        
+        if current_tokens + para_tokens > chunk_size and current_chunk:
+            chunks.append({
+                "chunk_id": chunk_id,
+                "text": current_chunk.strip(),
+                "token_count": current_tokens,
+                "char_count": len(current_chunk)
+            })
+            chunk_id += 1
+            
+            # Create overlap: take last N tokens worth of text from previous chunk
+            overlap_text = current_chunk[-overlap*4:] if len(current_chunk) > overlap*4 else current_chunk
+            current_chunk = overlap_text + "\n\n" + para
+            current_tokens = count_tokens(current_chunk)
+        else:
+            current_chunk += ("\n\n" if current_chunk else "") + para
+            current_tokens += para_tokens
+    
+    if current_chunk.strip():
+        chunks.append({
+            "chunk_id": chunk_id,
+            "text": current_chunk.strip(),
+            "token_count": current_tokens,
+            "char_count": len(current_chunk)
+        })
+    
+    result = {
+        "source": source,
+        "total_chunks": len(chunks),
+        "chunk_size_target": chunk_size,
+        "overlap": overlap,
+        "total_tokens": sum(c["token_count"] for c in chunks),
+        "chunks": chunks
+    }
+    
+    return json.dumps(result, indent=2)
+
 if __name__ == "__main__":
     mcp.run(transport="streamable-http")
